@@ -1,3 +1,4 @@
+import werkzeug
 from flask import Flask, render_template, request, url_for, redirect, flash, send_from_directory
 from werkzeug.security import generate_password_hash, check_password_hash
 from flask_sqlalchemy import SQLAlchemy
@@ -35,11 +36,19 @@ def home():
 
 @app.route('/register', methods=['GET','POST'])
 def register():
-"""allow user to register and direct user to secrets page to download file."""
+# """allow user to register and direct user to secrets page to download file."""
     if request.method == "POST":
-        new_user = User(email=request.form.get('email'),
-                    password=request.form.get('password'),
-                    name=request.form.get('name'),
+        # Hashing and salting the password entered by the user
+        hash_and_salted_password = generate_password_hash(
+            request.form.get('password'),
+            method='pbkdf2:sha256',
+            salt_length=8
+        )
+
+        # Storing the hashed password in our database
+        new_user = User(email = request.form.get('email'),
+                    password=hash_and_salted_password,
+                    name = request.form.get('name'),
                     )
         db.session.add(new_user)
         db.session.commit()
