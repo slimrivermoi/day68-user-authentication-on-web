@@ -1,4 +1,4 @@
-import werkzeug
+import flask
 from flask import Flask, render_template, request, url_for, redirect, flash, send_from_directory
 from werkzeug.security import generate_password_hash, check_password_hash
 from flask_sqlalchemy import SQLAlchemy
@@ -7,7 +7,7 @@ from sqlalchemy import Integer, String
 from flask_login import UserMixin, login_user, LoginManager, login_required, current_user, logout_user
 
 app = Flask(__name__)
-app.config['SECRET_KEY'] = 'secret-key-goes-here'
+app.config['SECRET_KEY'] = '08f3144fa9e589c8bebb26e24bb01faecf379ae849afd604156cddf8ea20e796'
 
 # CREATE DATABASE
 class Base(DeclarativeBase):
@@ -17,8 +17,19 @@ app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///users.db'
 db = SQLAlchemy(model_class=Base)
 db.init_app(app)
 
+
+#create Flask-Login Manager
+login_manager = LoginManager()
+login_manager.init_app(app)
+
+# Creates a user loader callback
+@login_manager.user_loader
+def loader_user(user_id):
+    return db.get_or_404(User, user_id)
+
+
 # CREATE TABLE IN DB
-class User(db.Model):
+class User(UserMixin, db.Model):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     email: Mapped[str] = mapped_column(String(100), unique=True)
     password: Mapped[str] = mapped_column(String(100))
@@ -52,35 +63,53 @@ def register():
                     )
         db.session.add(new_user)
         db.session.commit()
-        return render_template("secrets.html", name=request.form.get('name'))
+        #Log in and authenticate user after adding details to the db
+        login_user(new_user)
+
+        # Can redirect() and get name from the current_user
+        return redirect(url_for("secrets"))
     return render_template("register.html")
 
 
 
 
-@app.route('/login')
+@app.route('/login', methods=['GET','POST'])
 def login():
-    return render_template("login.html")
+
+    if request.method == "POST":
+        email_attempt = request.form.get("email")
+        password_attempt = request.form.get("password")
+
+        # Find user by email entered.
+        result = db.session.execute(db.select(User).where(User.email == email_attempt))
+        user = result.scalar()
+        # Check if the password entered is the same as the user's hash password in db
+        if check_password_hash(user.password, password_attempt):
+            login_user(user)
+            return redirect(url_for('secrets'))
+
+    return flask.render_template('login.html')
 
 
+## Only logged-in users can access the route
 @app.route('/secrets')
+@login_required
 def secrets():
-
-    return render_template("secrets.html")
+    print(current_user.name)   # this is to show you can pass the current_user name directly
+    return render_template("secrets.html", name=current_user.name)
 
 
 @app.route('/logout')
 def logout():
-    pass
+    logout_user()
+    return redirect(url_for('home'))
 
-
+# Only logged-in users can down download the pdf
 @app.route('/download')
+@login_required
 def download():
     """allow user to download cheat_sheet.pdf from the directory"""
-    return send_from_directory(
-        directory='static',
-        path='files/cheat_sheet.pdf'
-    )
+    return send_from_directory(directory='static',path='files/cheat_sheet.pdf')
 
 
 
