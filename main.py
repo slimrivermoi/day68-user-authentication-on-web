@@ -6,6 +6,10 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 from sqlalchemy import Integer, String
 from flask_login import UserMixin, login_user, LoginManager, login_required, current_user, logout_user
 
+EMAIL_ERROR_TEXT = 'The email address does not exist.'
+PASSWORD_ERROR_TEXT = 'Password incorrect.'
+REGISTER_ERROR_TEXT = 'You have already registered with this email address. Please log in instead.'
+
 app = Flask(__name__)
 app.config['SECRET_KEY'] = '08f3144fa9e589c8bebb26e24bb01faecf379ae849afd604156cddf8ea20e796'
 
@@ -48,34 +52,44 @@ def home():
 @app.route('/register', methods=['GET','POST'])
 def register():
 # """allow user to register and direct user to secrets page to download file."""
+    error = None
     if request.method == "POST":
-        # Hashing and salting the password entered by the user
-        hash_and_salted_password = generate_password_hash(
-            request.form.get('password'),
-            method='pbkdf2:sha256',
-            salt_length=8
-        )
+        # Find user by email entered.
+        email_attempt = request.form.get("email")
+        result = db.session.execute(db.select(User).where(User.email == email_attempt))
+        user = result.scalar()
+        if user: #if user is already in the db
+            error = REGISTER_ERROR_TEXT
+            return redirect(url_for('login'))
+        else:
 
-        # Storing the hashed password in our database
-        new_user = User(email = request.form.get('email'),
-                    password=hash_and_salted_password,
-                    name = request.form.get('name'),
-                    )
-        db.session.add(new_user)
-        db.session.commit()
-        #Log in and authenticate user after adding details to the db
-        login_user(new_user)
+            # Hashing and salting the password entered by the user
+            hash_and_salted_password = generate_password_hash(
+                request.form.get('password'),
+                method='pbkdf2:sha256',
+                salt_length=8
+            )
 
-        # Can redirect() and get name from the current_user
-        return redirect(url_for("secrets"))
-    return render_template("register.html")
+            # Storing the hashed password in our database
+            new_user = User(email = request.form.get('email'),
+                        password=hash_and_salted_password,
+                        name = request.form.get('name'),
+                        )
+            db.session.add(new_user)
+            db.session.commit()
+            #Log in and authenticate user after adding details to the db
+            login_user(new_user)
+
+            # Can redirect() and get name from the current_user
+            return redirect(url_for("secrets"))
+    return render_template("register.html", error=error)
 
 
 
 
 @app.route('/login', methods=['GET','POST'])
 def login():
-
+    error = None
     if request.method == "POST":
         email_attempt = request.form.get("email")
         password_attempt = request.form.get("password")
@@ -83,12 +97,16 @@ def login():
         # Find user by email entered.
         result = db.session.execute(db.select(User).where(User.email == email_attempt))
         user = result.scalar()
-        # Check if the password entered is the same as the user's hash password in db
-        if check_password_hash(user.password, password_attempt):
-            login_user(user)
-            return redirect(url_for('secrets'))
-
-    return flask.render_template('login.html')
+        if user: #if email address is valid
+            # Check if the password entered is the same as the user's hash password in db
+            if check_password_hash(user.password, password_attempt):
+                login_user(user)
+                return redirect(url_for('secrets'))
+            else:
+                error = PASSWORD_ERROR_TEXT
+        else:
+            error = EMAIL_ERROR_TEXT
+    return flask.render_template('login.html', error=error)
 
 
 ## Only logged-in users can access the route
