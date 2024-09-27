@@ -105,11 +105,12 @@ def logout():
     return redirect(url_for('home'))
 
 # Only logged-in users can down download the pdf
-@app.route('/download')
+@app.route('/download', methods=['POST'])
 @login_required
 def download():
+    filename = request.form['filename']
     """allow user to download cheat_sheet.pdf from the directory"""
-    return send_from_directory(directory='static',path='files/cheat_sheet.pdf')
+    return send_from_directory(directory='static',path='files/cheat_sheet.pdf', as_attachment=True,)
 
 
 
